@@ -4,6 +4,18 @@ from __future__ import annotations
 
 import streamlit as st
 
+from backend.analytics import (
+    AnalyticsEngine,
+    categorical_columns,
+    create_boxplot,
+    create_correlation_heatmap,
+    create_histogram,
+    create_scatter,
+    detect_outliers,
+    numeric_columns,
+    summary_statistics,
+    top_categories,
+)
 from backend.cleaning import clean_dataset
 from backend.utils import (
     DatasetSummary,
@@ -649,14 +661,109 @@ def render_placeholder_page(title: str, description: str) -> None:
     st.info("This section is under development and will be available soon.")
 
 
+def render_analytics_dashboard() -> None:
+    st.markdown("## Analytics Dashboard")
+    st.caption("Explore your dataset with interactive statistics, visualizations, and outlier analysis.")
+
+    df = st.session_state.get("cleaned_df")
+    if df is None:
+        df = st.session_state.get("dataframe")
+
+    if df is None:
+        st.info("Upload a dataset to explore analytics.")
+        return
+
+    engine = AnalyticsEngine()
+    summary = engine.summarize(df)
+
+    cols = st.columns(6)
+    metrics = [
+        ("Rows", f"{summary.row_count:,}"),
+        ("Columns", f"{summary.column_count:,}"),
+        ("Numeric Features", f"{len(summary.numeric_columns):,}"),
+        ("Categorical Features", f"{len(summary.categorical_columns):,}"),
+        ("Missing Values", f"{sum(summary.missing_values.values()):,}"),
+        ("Memory Usage", f"{df.memory_usage(deep=True).sum() / (1024 ** 2):.2f} MB"),
+    ]
+    for col, (label, value) in zip(cols, metrics):
+        with col:
+            st.metric(label=label, value=value)
+
+    with st.expander("Summary Statistics", expanded=False):
+        stats_df = summary_statistics(df)
+        if stats_df.empty:
+            st.info("No summary statistics available for this dataset.")
+        else:
+            st.dataframe(stats_df, use_container_width=True, hide_index=True)
+
+    numeric_cols = numeric_columns(df)
+    categorical_cols = categorical_columns(df)
+
+    st.sidebar.markdown("### Analytics Controls")
+    selected_numeric = st.sidebar.selectbox(
+        "Select Numeric Column",
+        options=numeric_cols if numeric_cols else ["No numeric columns"],
+        index=0,
+    )
+    selected_second_numeric = st.sidebar.selectbox(
+        "Select Second Numeric Column",
+        options=numeric_cols if numeric_cols else ["No numeric columns"],
+        index=1 if len(numeric_cols) > 1 else 0,
+    )
+    selected_categorical = st.sidebar.selectbox(
+        "Select Categorical Column",
+        options=categorical_cols if categorical_cols else ["No categorical columns"],
+        index=0,
+    )
+
+    if selected_numeric == "No numeric columns" or selected_second_numeric == "No numeric columns":
+        st.info("This dataset does not contain enough numeric columns for the interactive plots.")
+        return
+
+    if len(numeric_cols) >= 1:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(create_histogram(df, selected_numeric), use_container_width=True)
+        with col2:
+            st.plotly_chart(create_boxplot(df, selected_numeric), use_container_width=True)
+
+    if len(numeric_cols) >= 2:
+        st.plotly_chart(create_scatter(df, selected_numeric, selected_second_numeric), use_container_width=True)
+    else:
+        st.info("Add another numeric column to enable scatter plotting.")
+
+    if len(numeric_cols) >= 2:
+        st.plotly_chart(create_correlation_heatmap(df), use_container_width=True)
+    else:
+        st.info("At least two numeric columns are required for the correlation heatmap.")
+
+    if selected_categorical != "No categorical columns":
+        st.plotly_chart(
+            px.bar(
+                top_categories(df, selected_categorical),
+                x=selected_categorical,
+                y="Count",
+                template="plotly_dark",
+                title=f"Top Categories: {selected_categorical}",
+            ).update_layout(margin=dict(l=20, r=20, t=40, b=20)),
+            use_container_width=True,
+        )
+    else:
+        st.info("No categorical columns are available for category analysis.")
+
+    st.markdown("### Outlier Detection")
+    outlier_df = detect_outliers(df)
+    if outlier_df.empty:
+        st.info("Outlier detection is not available for this dataset.")
+    else:
+        st.dataframe(outlier_df, use_container_width=True, hide_index=True)
+
+
 def render_page(page: str) -> None:
     pages = {
         "home": lambda: render_home_page(),
         "upload": lambda: render_upload_page(),
-        "analytics": lambda: render_placeholder_page(
-            "Analytics Dashboard",
-            "Explore statistical summaries, distributions, and correlations across your data.",
-        ),
+        "analytics": lambda: render_analytics_dashboard(),
         "ai_insights": lambda: render_placeholder_page(
             "AI Insights",
             "Receive natural-language summaries and actionable recommendations from your data.",

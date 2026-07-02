@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import streamlit as st
 
+from backend.cleaning import clean_dataset
 from backend.utils import (
     DatasetSummary,
     get_dataframe_preview,
     get_dataset_summary,
     load_csv,
 )
+from backend.validation import DataValidator
 
 APP_TITLE = "InsightFlow AI"
 APP_SUBTITLE = "Transform raw data into actionable insights with intelligent analytics"
@@ -301,8 +303,16 @@ def configure_page() -> None:
 def init_session_state() -> None:
     if "dataframe" not in st.session_state:
         st.session_state.dataframe = None
+    if "df" not in st.session_state:
+        st.session_state.df = None
     if "uploaded_filename" not in st.session_state:
         st.session_state.uploaded_filename = None
+    if "cleaned_df" not in st.session_state:
+        st.session_state.cleaned_df = None
+    if "cleaning_summary" not in st.session_state:
+        st.session_state.cleaning_summary = None
+    if "cleaning_log" not in st.session_state:
+        st.session_state.cleaning_log = []
 
 
 def render_sidebar() -> str:
@@ -440,6 +450,130 @@ def render_column_details(summary: DatasetSummary) -> None:
     )
 
 
+def get_current_dataframe():
+    df = st.session_state.get("df")
+    if df is None:
+        df = st.session_state.get("dataframe")
+        if df is not None:
+            st.session_state.df = df
+    return df
+
+
+def render_data_validation(df) -> None:
+    st.markdown('<div class="section-header">Data Validation</div>', unsafe_allow_html=True)
+    validator = DataValidator()
+    result = validator.validate(df)
+
+    if result.is_valid:
+        st.success("The dataset passed the basic validation checks.")
+    else:
+        st.warning("The dataset has validation issues that may affect analysis.")
+
+    if result.errors:
+        with st.expander("Validation errors", expanded=True):
+            for error in result.errors:
+                st.write(f"• {error}")
+
+    if result.warnings:
+        with st.expander("Validation warnings", expanded=False):
+            for warning in result.warnings:
+                st.write(f"• {warning}")
+
+
+def calculate_quality_score(row_count: int, missing_values: int, duplicate_rows: int) -> float:
+    if row_count <= 0:
+        return 0.0
+    penalty = (missing_values + duplicate_rows) / row_count * 100
+    return round(max(0.0, 100.0 - penalty), 1)
+
+
+def render_cleaning_summary_cards(summary: dict) -> None:
+    metrics = [
+        ("Rows Before", f"{summary['rows_before']:,}"),
+        ("Rows After", f"{summary['rows_after']:,}"),
+        ("Duplicates Removed", f"{summary['duplicates_removed']:,}"),
+        ("Missing Values Fixed", f"{summary['missing_values_fixed']:,}"),
+        ("Memory Saved", f"{summary['memory_saved_mb']:.2f} MB"),
+        ("Columns Optimized", f"{summary['columns_optimized']:,}"),
+    ]
+    cols = st.columns(6)
+    for col, (label, value) in zip(cols, metrics):
+        with col:
+            st.metric(label=label, value=value)
+
+
+def render_cleaning_section(df) -> None:
+    st.markdown('<div class="section-header">Automatic Data Cleaning</div>', unsafe_allow_html=True)
+
+    if df is None:
+        st.info("Upload a CSV dataset to begin cleaning.")
+        return
+
+    if st.button("Run Automatic Cleaning", use_container_width=True):
+        try:
+            cleaned_df, cleaning_summary, cleaning_log = clean_dataset(df)
+            st.session_state.cleaned_df = cleaned_df
+            st.session_state.cleaning_summary = cleaning_summary
+            st.session_state.cleaning_log = cleaning_log
+            st.success("Automatic cleaning completed successfully.")
+        except Exception as exc:  # pragma: no cover - defensive UI handling
+            st.error(f"Cleaning could not be completed: {exc}")
+            return
+
+    cleaned_df = st.session_state.get("cleaned_df")
+    cleaning_summary = st.session_state.get("cleaning_summary")
+    cleaning_log = st.session_state.get("cleaning_log", [])
+
+    if cleaned_df is None or cleaning_summary is None:
+        st.info("No cleaned dataset generated yet. Run the cleaning pipeline to prepare a cleaned copy.")
+        return
+
+    render_cleaning_summary_cards(cleaning_summary)
+
+    before_summary = get_dataset_summary(df)
+    after_summary = get_dataset_summary(cleaned_df)
+
+    comparison_df = {
+        "Metric": ["Rows", "Columns", "Memory", "Missing Values", "Duplicate Rows", "Quality Score"],
+        "Before": [
+            f"{before_summary.row_count:,}",
+            f"{before_summary.column_count:,}",
+            f"{before_summary.memory_mb:.2f} MB",
+            f"{before_summary.missing_values:,}",
+            f"{before_summary.duplicate_rows:,}",
+            f"{calculate_quality_score(before_summary.row_count, before_summary.missing_values, before_summary.duplicate_rows):.1f}",
+        ],
+        "After": [
+            f"{after_summary.row_count:,}",
+            f"{after_summary.column_count:,}",
+            f"{after_summary.memory_mb:.2f} MB",
+            f"{after_summary.missing_values:,}",
+            f"{after_summary.duplicate_rows:,}",
+            f"{calculate_quality_score(after_summary.row_count, after_summary.missing_values, after_summary.duplicate_rows):.1f}",
+        ],
+    }
+
+    st.markdown("##### Before vs After")
+    st.dataframe(
+        comparison_df,
+        use_container_width=True,
+        hide_index=True,
+        height=320,
+    )
+
+    st.markdown("##### Cleaning Log")
+    for entry in cleaning_log:
+        st.write(f"{entry}")
+
+    st.download_button(
+        label="Download Cleaned CSV",
+        data=cleaned_df.to_csv(index=False).encode("utf-8"),
+        file_name="cleaned_dataset.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+
 def render_data_preview(df) -> None:
     st.markdown('<div class="section-header">Data Preview</div>', unsafe_allow_html=True)
     preview = get_dataframe_preview(df, rows=10)
@@ -463,8 +597,13 @@ def handle_file_upload() -> None:
         return
 
     try:
-        st.session_state.dataframe = load_csv(uploaded_file)
+        loaded_df = load_csv(uploaded_file)
+        st.session_state.dataframe = loaded_df
+        st.session_state.df = loaded_df
         st.session_state.uploaded_filename = uploaded_file.name
+        st.session_state.cleaned_df = None
+        st.session_state.cleaning_summary = None
+        st.session_state.cleaning_log = []
     except ValueError as exc:
         st.error(str(exc))
 
@@ -486,7 +625,7 @@ def render_upload_page() -> None:
 
     handle_file_upload()
 
-    df = st.session_state.dataframe
+    df = get_current_dataframe()
     if df is None:
         render_empty_state()
         return
@@ -499,6 +638,8 @@ def render_upload_page() -> None:
     render_kpi_cards(summary)
     render_dataset_overview(summary)
     render_column_details(summary)
+    render_data_validation(df)
+    render_cleaning_section(df)
     render_data_preview(df)
 
 

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import pandas as pd
+import plotly.express as px
 import streamlit as st
 
-from backend.ai import AIInsights, create_dataset_context, generate_ai_insights
+from backend.ai import create_dataset_context, generate_ai_insights
 from backend.analytics import (
     AnalyticsEngine,
     categorical_columns,
@@ -18,8 +20,11 @@ from backend.analytics import (
     top_categories,
 )
 from backend.cleaning import clean_dataset
+from backend.report import ReportGenerator, generate_markdown_report, generate_pdf_report, generate_summary_table
 from backend.utils import (
     DatasetSummary,
+    calculate_quality_score,
+    get_dataframe_metrics,
     get_dataframe_preview,
     get_dataset_summary,
     load_csv,
@@ -314,6 +319,7 @@ def configure_page() -> None:
 
 
 def init_session_state() -> None:
+    """Initialize the Streamlit session state used across the app."""
     if "dataframe" not in st.session_state:
         st.session_state.dataframe = None
     if "df" not in st.session_state:
@@ -326,9 +332,12 @@ def init_session_state() -> None:
         st.session_state.cleaning_summary = None
     if "cleaning_log" not in st.session_state:
         st.session_state.cleaning_log = []
+    if "ai_report" not in st.session_state:
+        st.session_state.ai_report = ""
 
 
 def render_sidebar() -> str:
+    """Render the sidebar navigation for the application."""
     st.sidebar.markdown(
         f'<div class="sidebar-brand">{APP_ICON} {APP_TITLE}</div>',
         unsafe_allow_html=True,
@@ -358,6 +367,7 @@ def render_sidebar() -> str:
 
 
 def render_hero() -> None:
+    """Render the landing hero section on the home page."""
     st.markdown(
         f"""
         <div class="hero-container">
@@ -370,6 +380,7 @@ def render_hero() -> None:
 
 
 def render_feature_cards() -> None:
+    """Render the feature cards shown on the home page."""
     features = [
         ("📁", "Smart Upload", "Drag and drop CSV files with instant validation and preview."),
         ("🧹", "Auto Cleaning", "Detect and resolve missing values, duplicates, and outliers."),
@@ -463,7 +474,8 @@ def render_column_details(summary: DatasetSummary) -> None:
     )
 
 
-def get_current_dataframe():
+def get_current_dataframe() -> pd.DataFrame | None:
+    """Return the active dataframe from the current session state."""
     df = st.session_state.get("df")
     if df is None:
         df = st.session_state.get("dataframe")
@@ -493,14 +505,8 @@ def render_data_validation(df) -> None:
                 st.write(f"• {warning}")
 
 
-def calculate_quality_score(row_count: int, missing_values: int, duplicate_rows: int) -> float:
-    if row_count <= 0:
-        return 0.0
-    penalty = (missing_values + duplicate_rows) / row_count * 100
-    return round(max(0.0, 100.0 - penalty), 1)
-
-
-def render_cleaning_summary_cards(summary: dict) -> None:
+def render_cleaning_summary_cards(summary: dict[str, object]) -> None:
+    """Render KPI cards for the cleaning summary."""
     metrics = [
         ("Rows Before", f"{summary['rows_before']:,}"),
         ("Rows After", f"{summary['rows_after']:,}"),
@@ -554,7 +560,7 @@ def render_cleaning_section(df) -> None:
             f"{before_summary.memory_mb:.2f} MB",
             f"{before_summary.missing_values:,}",
             f"{before_summary.duplicate_rows:,}",
-            f"{calculate_quality_score(before_summary.row_count, before_summary.missing_values, before_summary.duplicate_rows):.1f}",
+            f"{get_dataframe_metrics(df)['quality_score']:.1f}",
         ],
         "After": [
             f"{after_summary.row_count:,}",
@@ -562,7 +568,7 @@ def render_cleaning_section(df) -> None:
             f"{after_summary.memory_mb:.2f} MB",
             f"{after_summary.missing_values:,}",
             f"{after_summary.duplicate_rows:,}",
-            f"{calculate_quality_score(after_summary.row_count, after_summary.missing_values, after_summary.duplicate_rows):.1f}",
+            f"{get_dataframe_metrics(cleaned_df)['quality_score']:.1f}",
         ],
     }
 
@@ -587,7 +593,8 @@ def render_cleaning_section(df) -> None:
     )
 
 
-def render_data_preview(df) -> None:
+def render_data_preview(df: pd.DataFrame) -> None:
+    """Render a preview table for the current dataframe."""
     st.markdown('<div class="section-header">Data Preview</div>', unsafe_allow_html=True)
     preview = get_dataframe_preview(df, rows=10)
     st.dataframe(
@@ -599,6 +606,7 @@ def render_data_preview(df) -> None:
 
 
 def handle_file_upload() -> None:
+    """Handle CSV uploads and update the session state."""
     uploaded_file = st.file_uploader(
         label="Upload CSV",
         type=["csv"],
@@ -622,6 +630,7 @@ def handle_file_upload() -> None:
 
 
 def render_upload_page() -> None:
+    """Render the upload and validation workflow page."""
     st.markdown("## Upload Dataset")
     st.caption("Import a CSV file to explore your data structure and quality metrics.")
 
@@ -647,6 +656,7 @@ def render_upload_page() -> None:
     st.success(f"Loaded **{filename}** successfully.")
 
     summary = get_dataset_summary(df)
+    st.session_state.last_summary = get_dataframe_metrics(df)
 
     render_kpi_cards(summary)
     render_dataset_overview(summary)
@@ -657,12 +667,94 @@ def render_upload_page() -> None:
 
 
 def render_placeholder_page(title: str, description: str) -> None:
+    """Render a simple placeholder page for in-development sections."""
     st.markdown(f"## {title}")
     st.markdown(description)
     st.info("This section is under development and will be available soon.")
 
 
+def render_reports_page() -> None:
+    """Render the reports page and provide export downloads."""
+    st.markdown("## Reports")
+    st.caption("Download a professional PDF or Markdown report for the current analysis.")
+
+    df = st.session_state.get("cleaned_df")
+    if df is None:
+        df = st.session_state.get("dataframe")
+
+    if df is None:
+        st.info("Upload and analyze a dataset before generating reports.")
+        return
+
+    report_generator = ReportGenerator()
+    metadata = report_generator.build_metadata(
+        title="InsightFlow AI Enterprise Data Analytics Report",
+        row_count=len(df),
+        column_count=len(df.columns),
+    )
+
+    cleaning_summary = st.session_state.get("cleaning_summary") or {}
+    ai_report = st.session_state.get("ai_report", "") or "AI business insights are unavailable."
+
+    metrics = get_dataframe_metrics(df)
+    summary = {
+        "rows": metrics["row_count"],
+        "columns": metrics["column_count"],
+        "memory": f"{metrics['memory_mb']:.2f} MB",
+        "missing_values": metrics["missing_values"],
+        "duplicates": metrics["duplicate_rows"],
+        "quality_score": metrics["quality_score"],
+    }
+
+    sections = {
+        "Executive Summary": "A professional data analysis workflow was completed for the uploaded dataset.",
+        "Dataset Overview": f"Rows: {summary['rows']}\nColumns: {summary['columns']}\nMemory: {summary['memory']}\nMissing Values: {summary['missing_values']}\nDuplicates: {summary['duplicates']}",
+        "Data Quality": "The dataset quality was assessed and summarized for review.",
+        "Cleaning Summary": (
+            f"Rows Removed: {cleaning_summary.get('duplicates_removed', 0)}\n"
+            f"Missing Values Fixed: {cleaning_summary.get('missing_values_fixed', 0)}\n"
+            f"Memory Saved: {cleaning_summary.get('memory_saved_mb', 0):.2f} MB"
+        ),
+        "Analytics Summary": "Summary statistics and visualization insights are available in the analytics dashboard.",
+        "AI Business Insights": ai_report,
+        "Report Generated By": "InsightFlow AI",
+    }
+
+    summary_table = generate_summary_table(summary)
+    markdown_report = generate_markdown_report(metadata, sections, summary_table=summary_table)
+    pdf_bytes = generate_pdf_report(metadata, sections, summary_table=summary_table)
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.download_button(
+            label="Download PDF Report",
+            data=pdf_bytes,
+            file_name="insightflow_report.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    with col2:
+        st.download_button(
+            label="Download Markdown Report",
+            data=markdown_report.encode("utf-8"),
+            file_name="report.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
+    with col3:
+        st.download_button(
+            label="Download Cleaned CSV",
+            data=(st.session_state.get("cleaned_df") if st.session_state.get("cleaned_df") is not None else df).to_csv(index=False).encode("utf-8"),
+            file_name="cleaned_dataset.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+    st.success("Reports are ready for download.")
+
+
 def render_ai_business_analyst() -> None:
+    """Render the AI business insights page."""
     st.markdown("## AI Business Analyst")
     st.caption("Generate concise, business-focused insights from your uploaded dataset.")
 
@@ -707,6 +799,7 @@ def render_ai_business_analyst() -> None:
 
 
 def render_analytics_dashboard() -> None:
+    """Render the analytics dashboard with interactive charts and summaries."""
     st.markdown("## Analytics Dashboard")
     st.caption("Explore your dataset with interactive statistics, visualizations, and outlier analysis.")
 
@@ -720,6 +813,7 @@ def render_analytics_dashboard() -> None:
 
     engine = AnalyticsEngine()
     summary = engine.summarize(df)
+    st.session_state.last_analytics_summary = get_dataframe_metrics(df)
 
     cols = st.columns(6)
     metrics = [
@@ -805,15 +899,13 @@ def render_analytics_dashboard() -> None:
 
 
 def render_page(page: str) -> None:
+    """Render the currently selected page."""
     pages = {
         "home": lambda: render_home_page(),
         "upload": lambda: render_upload_page(),
         "analytics": lambda: render_analytics_dashboard(),
         "ai_insights": lambda: render_ai_business_analyst(),
-        "reports": lambda: render_placeholder_page(
-            "Reports",
-            "Generate and export professional analysis reports in multiple formats.",
-        ),
+        "reports": lambda: render_reports_page(),
         "settings": lambda: render_placeholder_page(
             "Settings",
             "Configure API keys, display preferences, and export options.",
@@ -823,6 +915,7 @@ def render_page(page: str) -> None:
 
 
 def render_footer() -> None:
+    """Render the shared footer for the application."""
     st.markdown(
         f'<div class="footer">© 2026 {APP_TITLE} · Built with Streamlit</div>',
         unsafe_allow_html=True,

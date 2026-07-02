@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 import pandas as pd
 
@@ -43,13 +43,34 @@ def load_csv(uploaded_file: BinaryIO) -> pd.DataFrame:
 
 def calculate_memory(df: pd.DataFrame) -> float:
     """Return total DataFrame memory usage in megabytes."""
-    return df.memory_usage(deep=True).sum() / (1024 ** 2)
+    return float(df.memory_usage(deep=True).sum() / (1024**2))
+
+
+def calculate_quality_score(df: pd.DataFrame) -> float:
+    """Return a simple quality score based on missing values and duplicates."""
+    if df is None or len(df) == 0:
+        return 0.0
+
+    penalty = (int(df.isnull().sum().sum()) + int(df.duplicated().sum())) / len(df) * 100
+    return round(max(0.0, 100.0 - penalty), 1)
+
+
+def get_dataframe_metrics(df: pd.DataFrame) -> dict[str, Any]:
+    """Return a reusable dictionary of core dataframe metrics."""
+    return {
+        "row_count": int(len(df)),
+        "column_count": int(len(df.columns)),
+        "memory_mb": calculate_memory(df),
+        "missing_values": int(df.isnull().sum().sum()),
+        "duplicate_rows": int(df.duplicated().sum()),
+        "quality_score": calculate_quality_score(df),
+    }
 
 
 def get_dataset_summary(df: pd.DataFrame) -> DatasetSummary:
     """Compute summary statistics and column metadata for a dataset."""
     numeric_cols = df.select_dtypes(include="number").columns
-    categorical_cols = df.select_dtypes(include=["object", "category", "bool"]).columns
+    categorical_cols = df.select_dtypes(include=["object", "category", "bool", "string"]).columns
 
     column_info = pd.DataFrame(
         {
@@ -59,13 +80,14 @@ def get_dataset_summary(df: pd.DataFrame) -> DatasetSummary:
             "Unique Values": [df[col].nunique() for col in df.columns],
         }
     )
+    metrics = get_dataframe_metrics(df)
 
     return DatasetSummary(
-        row_count=len(df),
-        column_count=len(df.columns),
-        memory_mb=calculate_memory(df),
-        missing_values=int(df.isnull().sum().sum()),
-        duplicate_rows=int(df.duplicated().sum()),
+        row_count=metrics["row_count"],
+        column_count=metrics["column_count"],
+        memory_mb=metrics["memory_mb"],
+        missing_values=metrics["missing_values"],
+        duplicate_rows=metrics["duplicate_rows"],
         numeric_count=len(numeric_cols),
         categorical_count=len(categorical_cols),
         column_info=column_info,

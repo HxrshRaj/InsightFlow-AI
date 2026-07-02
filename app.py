@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from backend.ai import AIInsights, create_dataset_context, generate_ai_insights
 from backend.analytics import (
     AnalyticsEngine,
     categorical_columns,
@@ -661,6 +662,50 @@ def render_placeholder_page(title: str, description: str) -> None:
     st.info("This section is under development and will be available soon.")
 
 
+def render_ai_business_analyst() -> None:
+    st.markdown("## AI Business Analyst")
+    st.caption("Generate concise, business-focused insights from your uploaded dataset.")
+
+    df = st.session_state.get("cleaned_df")
+    if df is None:
+        df = st.session_state.get("dataframe")
+
+    if df is None:
+        st.info("Upload a dataset first to generate AI insights.")
+        return
+
+    if st.button("Generate AI Insights", use_container_width=True):
+        with st.spinner("Generating AI business insights..."):
+            context = create_dataset_context(df)
+            report = generate_ai_insights(context)
+            st.session_state.ai_report = report
+
+    report = st.session_state.get("ai_report", "")
+    if not report:
+        st.info("No AI report generated yet. Click the button above to create one.")
+        return
+
+    st.markdown("### Report")
+    st.download_button(
+        label="Download AI Report",
+        data=report.encode("utf-8"),
+        file_name="business_insights.md",
+        mime="text/markdown",
+        use_container_width=True,
+    )
+
+    sections = [section.strip() for section in report.split("#") if section.strip()]
+    for section in sections:
+        if not section:
+            continue
+        title, _, body = section.partition("\n")
+        if not body.strip():
+            continue
+        with st.container():
+            st.markdown(f"### {title.strip()}")
+            st.write(body.strip())
+
+
 def render_analytics_dashboard() -> None:
     st.markdown("## Analytics Dashboard")
     st.caption("Explore your dataset with interactive statistics, visualizations, and outlier analysis.")
@@ -764,10 +809,7 @@ def render_page(page: str) -> None:
         "home": lambda: render_home_page(),
         "upload": lambda: render_upload_page(),
         "analytics": lambda: render_analytics_dashboard(),
-        "ai_insights": lambda: render_placeholder_page(
-            "AI Insights",
-            "Receive natural-language summaries and actionable recommendations from your data.",
-        ),
+        "ai_insights": lambda: render_ai_business_analyst(),
         "reports": lambda: render_placeholder_page(
             "Reports",
             "Generate and export professional analysis reports in multiple formats.",

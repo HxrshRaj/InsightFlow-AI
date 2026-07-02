@@ -5,7 +5,13 @@ from backend.validation import DataValidator
 from backend.cleaning import DataCleaner
 from backend.ai import AIInsights
 from backend.report import ReportGenerator
-from backend.utils import load_csv, format_file_size
+from backend.utils import (
+    DatasetSummary,
+    calculate_memory,
+    format_file_size,
+    get_dataset_summary,
+    load_csv,
+)
 
 __all__ = [
     "AnalyticsEngine",
@@ -13,6 +19,9 @@ __all__ = [
     "DataCleaner",
     "AIInsights",
     "ReportGenerator",
-    "load_csv",
+    "DatasetSummary",
+    "calculate_memory",
     "format_file_size",
+    "get_dataset_summary",
+    "load_csv",
 ]

@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import streamlit as st
 
-from backend.utils import format_file_size
+from backend.utils import (
+    DatasetSummary,
+    get_dataframe_preview,
+    get_dataset_summary,
+    load_csv,
+)
 
 APP_TITLE = "InsightFlow AI"
 APP_SUBTITLE = "Transform raw data into actionable insights with intelligent analytics"
 APP_ICON = "📊"
 
 NAV_ITEMS = {
+    "Upload Dataset": "upload",
     "Home": "home",
-    "Upload Data": "upload",
     "Analytics": "analytics",
     "AI Insights": "ai_insights",
     "Reports": "reports",
@@ -20,13 +25,15 @@ NAV_ITEMS = {
 }
 
 NAV_ICONS = {
+    "Upload Dataset": "📁",
     "Home": "🏠",
-    "Upload Data": "📁",
     "Analytics": "📈",
     "AI Insights": "🤖",
     "Reports": "📄",
     "Settings": "⚙️",
 }
+
+DEFAULT_PAGE = "Upload Dataset"
 
 
 def inject_custom_css() -> None:
@@ -202,6 +209,80 @@ def inject_custom_css() -> None:
                 border-top: 1px solid #1E293B;
                 margin-top: 3rem;
             }
+
+            .empty-state {
+                text-align: center;
+                padding: 4rem 2rem;
+                margin: 2rem 0;
+                background: linear-gradient(145deg, #1E293B 0%, #0F172A 100%);
+                border: 1px dashed #475569;
+                border-radius: 16px;
+            }
+
+            .empty-state-icon {
+                font-size: 2.5rem;
+                margin-bottom: 1rem;
+                opacity: 0.6;
+            }
+
+            .empty-state-title {
+                font-size: 1.25rem;
+                font-weight: 600;
+                color: #CBD5E1;
+                margin-bottom: 0.5rem;
+            }
+
+            .empty-state-desc {
+                font-size: 0.9rem;
+                color: #64748B;
+            }
+
+            div[data-testid="stMetric"] {
+                background: #1E293B;
+                border: 1px solid #334155;
+                border-radius: 10px;
+                padding: 0.75rem 1rem;
+            }
+
+            div[data-testid="stMetric"] label {
+                color: #94A3B8 !important;
+                font-size: 0.75rem !important;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+
+            div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+                color: #6366F1 !important;
+                font-weight: 700;
+            }
+
+            .overview-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 0.75rem;
+                margin: 1rem 0 1.5rem;
+            }
+
+            .overview-item {
+                background: #1E293B;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                padding: 0.875rem 1rem;
+            }
+
+            .overview-label {
+                font-size: 0.75rem;
+                color: #64748B;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                margin-bottom: 0.25rem;
+            }
+
+            .overview-value {
+                font-size: 1.1rem;
+                font-weight: 600;
+                color: #F1F5F9;
+            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -217,6 +298,13 @@ def configure_page() -> None:
     )
 
 
+def init_session_state() -> None:
+    if "dataframe" not in st.session_state:
+        st.session_state.dataframe = None
+    if "uploaded_filename" not in st.session_state:
+        st.session_state.uploaded_filename = None
+
+
 def render_sidebar() -> str:
     st.sidebar.markdown(
         f'<div class="sidebar-brand">{APP_ICON} {APP_TITLE}</div>',
@@ -224,9 +312,12 @@ def render_sidebar() -> str:
     )
 
     st.sidebar.markdown("##### Navigation")
+    nav_options = list(NAV_ITEMS.keys())
+    default_index = nav_options.index(DEFAULT_PAGE)
     selected = st.sidebar.radio(
         label="Navigation",
-        options=list(NAV_ITEMS.keys()),
+        options=nav_options,
+        index=default_index,
         format_func=lambda item: f"{NAV_ICONS[item]}  {item}",
         label_visibility="collapsed",
     )
@@ -275,61 +366,140 @@ def render_feature_cards() -> None:
     st.markdown(cards_html, unsafe_allow_html=True)
 
 
-def render_upload_section() -> None:
-    st.markdown('<div class="section-header">Upload Your Data</div>', unsafe_allow_html=True)
+def render_home_page() -> None:
+    render_hero()
+    render_feature_cards()
+
+
+def render_empty_state() -> None:
+    st.markdown(
+        """
+        <div class="empty-state">
+            <div class="empty-state-icon">📂</div>
+            <div class="empty-state-title">Upload a CSV dataset to begin analysis.</div>
+            <div class="empty-state-desc">Drag and drop a file above or click to browse.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_kpi_cards(summary: DatasetSummary) -> None:
+    metrics = [
+        ("Rows", f"{summary.row_count:,}"),
+        ("Columns", f"{summary.column_count:,}"),
+        ("Memory", f"{summary.memory_mb:.2f} MB"),
+        ("Missing Values", f"{summary.missing_values:,}"),
+        ("Duplicate Rows", f"{summary.duplicate_rows:,}"),
+        ("Numeric Features", f"{summary.numeric_count:,}"),
+    ]
+    cols = st.columns(6)
+    for col, (label, value) in zip(cols, metrics):
+        with col:
+            st.metric(label=label, value=value)
+
+
+def render_dataset_overview(summary: DatasetSummary) -> None:
+    st.markdown('<div class="section-header">Dataset Overview</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="overview-grid">
+            <div class="overview-item">
+                <div class="overview-label">Rows</div>
+                <div class="overview-value">{summary.row_count:,}</div>
+            </div>
+            <div class="overview-item">
+                <div class="overview-label">Columns</div>
+                <div class="overview-value">{summary.column_count:,}</div>
+            </div>
+            <div class="overview-item">
+                <div class="overview-label">Memory Usage</div>
+                <div class="overview-value">{summary.memory_mb:.2f} MB</div>
+            </div>
+            <div class="overview-item">
+                <div class="overview-label">Numeric Columns</div>
+                <div class="overview-value">{summary.numeric_count:,}</div>
+            </div>
+            <div class="overview-item">
+                <div class="overview-label">Categorical Columns</div>
+                <div class="overview-value">{summary.categorical_count:,}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_column_details(summary: DatasetSummary) -> None:
+    st.markdown('<div class="section-header">Column Details</div>', unsafe_allow_html=True)
+    st.dataframe(
+        summary.column_info,
+        use_container_width=True,
+        hide_index=True,
+        height=min(44 * len(summary.column_info) + 38, 400),
+    )
+
+
+def render_data_preview(df) -> None:
+    st.markdown('<div class="section-header">Data Preview</div>', unsafe_allow_html=True)
+    preview = get_dataframe_preview(df, rows=10)
+    st.dataframe(
+        preview,
+        use_container_width=True,
+        hide_index=True,
+        height=400,
+    )
+
+
+def handle_file_upload() -> None:
+    uploaded_file = st.file_uploader(
+        label="Upload CSV",
+        type=["csv"],
+        accept_multiple_files=False,
+        help="Upload a comma-separated values file to begin analysis.",
+    )
+
+    if uploaded_file is None:
+        return
+
+    try:
+        st.session_state.dataframe = load_csv(uploaded_file)
+        st.session_state.uploaded_filename = uploaded_file.name
+    except ValueError as exc:
+        st.error(str(exc))
+
+
+def render_upload_page() -> None:
+    st.markdown("## Upload Dataset")
+    st.caption("Import a CSV file to explore your data structure and quality metrics.")
 
     st.markdown(
         """
         <div class="upload-zone">
             <div class="upload-icon">📂</div>
             <div class="upload-title">Drop your CSV file here</div>
-            <div class="upload-hint">Supports .csv files up to 200 MB</div>
+            <div class="upload-hint">Supports .csv files only</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    uploaded_file = st.file_uploader(
-        label="Choose a CSV file",
-        type=["csv"],
-        help="Upload a comma-separated values file to begin analysis.",
-        label_visibility="collapsed",
-    )
+    handle_file_upload()
 
-    if uploaded_file is not None:
-        file_size = format_file_size(uploaded_file.size)
-        st.success(f"**{uploaded_file.name}** uploaded successfully ({file_size})")
-        st.info("Data processing will be available in the next release.")
-    else:
-        st.markdown(
-            """
-            <div class="stat-row">
-                <div class="stat-card">
-                    <div class="stat-value">—</div>
-                    <div class="stat-label">Rows</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">—</div>
-                    <div class="stat-label">Columns</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">—</div>
-                    <div class="stat-label">Missing</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">—</div>
-                    <div class="stat-label">Quality Score</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    df = st.session_state.dataframe
+    if df is None:
+        render_empty_state()
+        return
 
+    filename = st.session_state.uploaded_filename or "dataset.csv"
+    st.success(f"Loaded **{filename}** successfully.")
 
-def render_home_page() -> None:
-    render_hero()
-    render_feature_cards()
-    render_upload_section()
+    summary = get_dataset_summary(df)
+
+    render_kpi_cards(summary)
+    render_dataset_overview(summary)
+    render_column_details(summary)
+    render_data_preview(df)
 
 
 def render_placeholder_page(title: str, description: str) -> None:
@@ -341,10 +511,7 @@ def render_placeholder_page(title: str, description: str) -> None:
 def render_page(page: str) -> None:
     pages = {
         "home": lambda: render_home_page(),
-        "upload": lambda: render_placeholder_page(
-            "Upload Data",
-            "Import CSV files, validate schema, and preview your dataset before analysis.",
-        ),
+        "upload": lambda: render_upload_page(),
         "analytics": lambda: render_placeholder_page(
             "Analytics Dashboard",
             "Explore statistical summaries, distributions, and correlations across your data.",
@@ -374,6 +541,7 @@ def render_footer() -> None:
 
 def main() -> None:
     configure_page()
+    init_session_state()
     inject_custom_css()
 
     current_page = render_sidebar()

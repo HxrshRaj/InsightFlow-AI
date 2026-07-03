@@ -199,23 +199,10 @@ streamlit run app.py
 
 ---
 
-# 🌐 Live Application
-
-👉 https://insightflow-ai-stazd6bjfvnu5uyjlvqbmv.streamlit.app/
 
 ---
 
-# 📸 Screenshots
 
-Add the following screenshots after deployment:
-
-* Home Page
-* Dataset Upload
-* Data Validation
-* Automatic Cleaning
-* Analytics Dashboard
-* AI Business Insights
-* Report Export
 
 ---
 

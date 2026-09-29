@@ -100,7 +100,7 @@ Automatically generates:
 | Frontend          | Streamlit        |
 | Data Processing   | Pandas, NumPy    |
 | Visualization     | Plotly           |
-| Machine Learning  | Scikit-learn     |
+| Machine Learning  | PyTorch, Scikit-learn (standalone `ml/` module) |
 | AI                | Groq API (Llama) |
 | Report Generation | FPDF2            |
 | Configuration     | python-dotenv    |
@@ -228,7 +228,9 @@ A feedforward PyTorch regressor (California Housing) with a documented training-
 
 # 💼 Resume Highlights
 
-* Built an AI-powered data analytics platform using Python, Streamlit, Pandas, Plotly, and Scikit-learn to automate dataset validation, preprocessing, visualization, and reporting.
+* Built an AI-powered data analytics platform using Python, Streamlit, Pandas, and Plotly to automate dataset validation, preprocessing, visualization, and reporting.
+
+* Trained and debugged a PyTorch regression model on California Housing (standalone `ml/` module): diagnosed unstable training as a feature-scaling issue and cut test RMSE from 0.755 to 0.528 (5-seed mean); see `docs/pytorch-model.md`.
 
 * Developed modular data engineering components for data quality assessment, automated cleaning, interactive analytics, and report generation.
 

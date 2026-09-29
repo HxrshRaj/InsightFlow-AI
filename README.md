@@ -206,6 +206,12 @@ streamlit run app.py
 
 ---
 
+# 🧠 PyTorch Model (Standalone)
+
+A feedforward PyTorch regressor (California Housing) with a documented training-debugging case study lives in [`ml/`](ml/) — see [`docs/pytorch-model.md`](docs/pytorch-model.md). It is not part of the Streamlit app.
+
+---
+
 # 🎯 Future Enhancements
 
 * User Authentication

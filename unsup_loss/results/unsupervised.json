@@ -1,0 +1,83 @@
+{
+  "rows": 48842,
+  "features": 106,
+  "pca": {
+    "components_for_80pct_variance": 13,
+    "components_for_90pct_variance": 22
+  },
+  "kmeans": {
+    "2": {
+      "silhouette": 0.11223940551280975,
+      "stability_ari_across_seeds": 0.9748989797226612
+    },
+    "3": {
+      "silhouette": 0.1100824847817421,
+      "stability_ari_across_seeds": 0.4450073383250305
+    },
+    "4": {
+      "silhouette": 0.13841554522514343,
+      "stability_ari_across_seeds": 0.7364763345510194
+    },
+    "5": {
+      "silhouette": 0.13352951407432556,
+      "stability_ari_across_seeds": 0.8751917587901787
+    },
+    "6": {
+      "silhouette": 0.1432972401380539,
+      "stability_ari_across_seeds": 0.7727443923966678
+    },
+    "8": {
+      "silhouette": 0.12418675422668457,
+      "stability_ari_across_seeds": 0.6351434881093403
+    }
+  },
+  "kmeans_best_k_by_silhouette": 6,
+  "cluster_profiles_not_used_for_fitting": [
+    {
+      "cluster": 0,
+      "share": 0.3357356373612874,
+      "positive_income_rate": 0.22862544212708866,
+      "female_share": 0.2658251006220271,
+      "mean_age": 47.656909379192584
+    },
+    {
+      "cluster": 1,
+      "share": 0.2520371811146145,
+      "positive_income_rate": 0.015515840779853778,
+      "female_share": 0.48424045491470347,
+      "mean_age": 25.311291632818847
+    },
+    {
+      "cluster": 2,
+      "share": 0.045759796896114,
+      "positive_income_rate": 0.5109619686800895,
+      "female_share": 0.23310961968680088,
+      "mean_age": 41.7923937360179
+    },
+    {
+      "cluster": 3,
+      "share": 0.12859833749641703,
+      "positive_income_rate": 0.17274319375895558,
+      "female_share": 0.3150772170036618,
+      "mean_age": 34.64225441808629
+    },
+    {
+      "cluster": 4,
+      "share": 0.00499570042176815,
+      "positive_income_rate": 1.0,
+      "female_share": 0.14754098360655737,
+      "mean_age": 46.61065573770492
+    },
+    {
+      "cluster": 5,
+      "share": 0.23287334670979895,
+      "positive_income_rate": 0.46386495516089327,
+      "female_share": 0.29330050993493934,
+      "mean_age": 41.49841744329172
+    }
+  ],
+  "anomaly": {
+    "spearman_autoencoder_vs_isolation_forest": 0.6862284348244635,
+    "top1pct_overlap": 0.2725409836065574
+  }
+}

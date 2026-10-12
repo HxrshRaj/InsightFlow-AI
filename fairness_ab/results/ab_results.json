@@ -1,0 +1,42 @@
+{
+  "z_test_example": {
+    "p1": 0.12,
+    "p2": 0.135,
+    "diff": 0.015000000000000013,
+    "z": 2.011261066352851,
+    "p_value": 0.04429788859157968,
+    "ci": [
+      0.00038627010948390217,
+      0.029613729890516124
+    ]
+  },
+  "sample_size_per_arm": {
+    "baseline_10pct_detect_+1pt": 14751,
+    "baseline_10pct_detect_+2pt": 3841
+  },
+  "offline_model_comparison": {
+    "test_rows": 14652,
+    "acc_A_logreg": 0.8494403494403494,
+    "acc_B_gradient_boosting": 0.8678678678678678,
+    "accuracy_diff_B_minus_A": {
+      "observed_diff": 0.01842751842751844,
+      "ci95": [
+        0.014469014469014496,
+        0.022522522522522515
+      ]
+    },
+    "mcnemar": {
+      "A_right_B_wrong": 326,
+      "A_wrong_B_right": 596,
+      "p_value": 4.535308184580089e-19
+    }
+  },
+  "peeking_simulation_A_vs_A": {
+    "single_look": 0.0485,
+    "peek_any_p<0.05": 0.19675,
+    "peek_bonferroni": 0.025,
+    "n_sims": 4000,
+    "looks": 10,
+    "arm_size": 4000
+  }
+}

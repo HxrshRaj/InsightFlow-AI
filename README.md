@@ -261,3 +261,7 @@ This project is licensed under the MIT License.
 Built with ❤️ using Python, Streamlit, Plotly, Pandas, and Groq AI.
 
 </div>
+
+## Fairness and A/B experimentation
+
+See [`fairness_ab/`](fairness_ab/README.md): a bias audit with two from-scratch mitigations and an A/B testing toolkit, run on UCI Adult.

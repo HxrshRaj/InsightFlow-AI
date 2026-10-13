@@ -1,0 +1,38 @@
+name: nlp-serving
+on:
+  push:
+    paths: ["nlp_serving/**", ".github/workflows/nlp-serving.yml"]
+  pull_request:
+    paths: ["nlp_serving/**", ".github/workflows/nlp-serving.yml"]
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: nlp_serving/go } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.22" }
+      - run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go test -v ./...
+      - name: cross-compile for big-endian s390x (IBM Z) and arm64
+        run: |
+          GOOS=linux GOARCH=s390x go build ./...
+          GOOS=linux GOARCH=arm64 go build ./...
+  python-and-r:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: nlp_serving } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt
+      - run: ./download_data.sh
+      - run: python -m pytest tests -q
+      - run: python -m python.run
+      - name: Go parity against freshly generated golden files
+        run: cd go && go test ./...
+      - run: sudo apt-get update && sudo apt-get install -y r-base-core
+      - run: Rscript r/verify_metrics.R
+      - name: notebook executes end to end
+        run: jupyter nbconvert --to notebook --execute notebooks/nlp_exploration.ipynb --output-dir /tmp/nb

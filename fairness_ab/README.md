@@ -8,6 +8,7 @@ bash fairness_ab/download.sh
 python -m fairness_ab.audit      # -> results/fairness_audit.json
 python -m fairness_ab.ab         # -> results/ab_results.json
 pytest fairness_ab/tests
+Rscript fairness_ab/r/verify_ab.R   # independent base-R check of the A/B numbers
 ```
 
 ## 1. Bias audit and mitigation (`audit.py`, `mitigation.py`, `metrics.py`)
@@ -41,6 +42,13 @@ What this shows:
 - **Peeking simulation** (A/A tests, no true effect, 4,000 simulations, 10 looks): a single end-of-test look gives a
   4.9% false-positive rate (as designed); stopping at the first p < 0.05 peek gives **19.7%**; a Bonferroni-corrected
   rule gives 2.5%. This is a simulation of the statistics, not an analysis of real user traffic.
+
+## R cross-check (`r/verify_ab.R`)
+
+Base R, no packages. It re-derives the two-proportion z-test (`prop.test`), the McNemar test (exact `binom.test` on the
+326 vs 596 discordant pairs) and the sample-size calculations (`power.prop.test`) and compares them with
+`results/ab_results.json`. All match: z-test p = 0.0443, McNemar p = 4.5e-19 (both implementations), sample sizes
+14,751 and 3,841 per arm. The bootstrap CI and the peeking simulation are not re-implemented in R.
 
 ## Limits
 - No real online experiment was run; the A/B section is statistical tooling plus an offline comparison.

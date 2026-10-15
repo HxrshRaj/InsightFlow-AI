@@ -1,0 +1,18 @@
+name: fairness-ab
+on:
+  push:
+    paths: ["fairness_ab/**", ".github/workflows/fairness-ab.yml"]
+  pull_request:
+    paths: ["fairness_ab/**", ".github/workflows/fairness-ab.yml"]
+jobs:
+  python-and-r:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install numpy pandas scikit-learn scipy pytest
+      - run: python -m pytest fairness_ab/tests -q
+      - run: sudo apt-get update && sudo apt-get install -y r-base-core
+      - name: R cross-check of the A/B statistics
+        run: Rscript fairness_ab/r/verify_ab.R
